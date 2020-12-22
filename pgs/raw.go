@@ -20,7 +20,7 @@ type pcs struct {
 	ObjectCount       uint8 // Number of composition objects defined in this segment
 }
 
-type pcsCompositionObject struct {
+type pcsObject struct {
 	ObjectID      uint16
 	WindowID      uint8
 	ObjectCropped objectCroppedFlag

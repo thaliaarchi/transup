@@ -22,13 +22,8 @@ func (sr *SegmentReader) ReadSegment() (*Segment, error) {
 		}
 		return nil, fmt.Errorf("segment header: %w", err)
 	}
-	if h.MagicNumber != 0x5047 {
-		return nil, fmt.Errorf(`magic number not "PG" 0x5047: %x`, h.MagicNumber)
-	}
-	switch h.SegmentType {
-	case pcsType, wdsType, pdsType, odsType, endType:
-	default:
-		return nil, fmt.Errorf("unrecognized segment type: 0x%x", h.SegmentType)
+	if err := h.validate(); err != nil {
+		return nil, err
 	}
 	s := &Segment{
 		PresentationTime: h.PresentationTime.Duration(),
@@ -72,19 +67,18 @@ func (sr *SegmentReader) readPresentationComposition(segmentSize uint16) (*Prese
 	if err := binary.Read(sr.r, binary.BigEndian, &pcs); err != nil {
 		return nil, err
 	}
-	switch pcs.CompositionState {
-	case Normal, AcquisitionPoint, EpochStart:
-	default:
-		return nil, fmt.Errorf("unrecognized composition state: 0x%x", pcs.CompositionState)
-	}
-	if pcs.PaletteUpdateFlag&^pufTrue != 0 {
-		return nil, fmt.Errorf("unrecognized palette update flag: 0x%x", pcs.PaletteUpdateFlag)
+	if err := pcs.validate(); err != nil {
+		return nil, err
 	}
 	size := 11
 	objects := make([]CompositionObject, pcs.ObjectCount)
 	for i := range objects {
-		var obj pcsCompositionObject
-		if err := binary.Read(sr.r, binary.BigEndian, &obj); err != nil {
+		var obj pcsObject
+		err := binary.Read(sr.r, binary.BigEndian, &obj)
+		if err == nil {
+			err = obj.validate()
+		}
+		if err != nil {
 			return nil, fmt.Errorf("composition object %d/%d: %w", i+1, pcs.ObjectCount, err)
 		}
 		objects[i] = CompositionObject{
@@ -92,10 +86,6 @@ func (sr *SegmentReader) readPresentationComposition(segmentSize uint16) (*Prese
 			WindowID: obj.WindowID,
 			X:        obj.X,
 			Y:        obj.Y,
-		}
-		if obj.ObjectCropped&^croppedForce != 0 {
-			return nil, fmt.Errorf("composition object %d/%d: unrecognized flag: 0x%x",
-				i+1, pcs.ObjectCount, obj.ObjectCropped)
 		}
 		if obj.ObjectCropped == croppedForce {
 			var crop CompositionObjectCrop
@@ -128,9 +118,8 @@ func (sr *SegmentReader) readWindows(segmentSize uint16) ([]Window, error) {
 	if err := binary.Read(sr.r, binary.BigEndian, &wds); err != nil {
 		return nil, err
 	}
-	if segmentSize != uint16(wds.WindowCount)*9+1 {
-		return nil, fmt.Errorf("segment size %d indicates %d windows, but %d specified",
-			segmentSize, uint16(wds.WindowCount)*9+1, wds.WindowCount)
+	if err := wds.validate(segmentSize); err != nil {
+		return nil, err
 	}
 	windows := make([]Window, wds.WindowCount)
 	for i := range windows {
@@ -192,13 +181,15 @@ func (sr *SegmentReader) readObject(segmentSize uint16) (*Object, error) {
 		n += n0
 	}
 	obj := &Object{
-		ID:         ods.ObjectID,
-		Version:    ods.ObjectVersion,
-		First:      ods.SequenceFlag&firstInSequence != 0,
-		Last:       ods.SequenceFlag&lastInSequence != 0,
-		Width:      ods.Width,
-		Height:     ods.Height,
-		ObjectData: data,
+		ID:      ods.ObjectID,
+		Version: ods.ObjectVersion,
+		First:   ods.SequenceFlag&firstInSequence != 0,
+		Last:    ods.SequenceFlag&lastInSequence != 0,
+		Image: Image{
+			Width:  ods.Width,
+			Height: ods.Height,
+			Data:   data,
+		},
 	}
 	return obj, nil
 }

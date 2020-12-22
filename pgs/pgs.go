@@ -1,6 +1,9 @@
 package pgs
 
-import "time"
+import (
+	"image/color"
+	"time"
+)
 
 type Segment struct {
 	PresentationTime time.Duration
@@ -45,16 +48,19 @@ type Palette struct {
 
 type PaletteEntry struct {
 	ID uint8 // Entry number of the palette
-	// Luminance, blue difference, red difference, alpha
-	Y, Cr, Cb, A uint8
+	color.NYCbCrA
 }
 
 type Object struct {
-	ID            uint16 // ID of this object
-	Version       uint8  // Version of this object
-	First, Last   bool
-	Width, Height uint16 // Dimensions of the image
-	ObjectData    []byte // This is the image data compressed using Run-length Encoding (RLE). The size of the data is defined in the Object Data Length field.
+	ID          uint16 // ID of this object
+	Version     uint8  // Version of this object
+	First, Last bool
+	Image
+}
+
+type Image struct {
+	Width, Height uint16 // Dimensions
+	Data          []byte
 }
 
 type CompositionState uint8

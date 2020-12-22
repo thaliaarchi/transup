@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/png"
 	"io"
 	"log"
 	"os"
@@ -10,25 +11,45 @@ import (
 )
 
 func main() {
-	f, err := os.Open("subs.sup")
+	f, err := os.Open(os.Args[1])
 	try(err)
 	defer f.Close()
 
 	sr := pgs.NewSegmentReader(f)
+	var p *pgs.Palette
 	for {
 		s, err := sr.ReadSegment()
 		if err == io.EOF {
 			break
 		}
 		try(err)
-		fmt.Printf("Presentation:%v Decoding:%v %T ", s.PresentationTime, s.DecodingTime, s.Data)
+		var typ string
 		switch d := s.Data.(type) {
+		case *pgs.PresentationComposition:
+			typ = "PCS"
+		case []pgs.Window:
+			typ = "WDS"
 		case *pgs.Palette:
-			d.Entries = nil
+			typ = "PDS"
+			p = d
 		case *pgs.Object:
-			d.ObjectData = nil
+			img, err := d.Image.Convert(p)
+			try(err)
+			f, err := os.Create(fmt.Sprintf("obj_%s.png", s.PresentationTime))
+			try(err)
+			try(png.Encode(f, img))
+			typ = "ODS"
+		case nil:
+			typ = "END"
 		}
-		fmt.Printf("Data:%+v\n", s.Data)
+		fmt.Printf("%s %v ", typ, s.PresentationTime)
+		if s.DecodingTime != s.PresentationTime {
+			fmt.Printf("Decoding:%v ", s.DecodingTime)
+		}
+		fmt.Printf("%+v\n", s.Data)
+		if s.Data == nil {
+			fmt.Println()
+		}
 	}
 }
 
