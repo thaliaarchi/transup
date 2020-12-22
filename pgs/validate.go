@@ -7,7 +7,15 @@ func (h *header) validate() error {
 		return fmt.Errorf(`magic number not "PG" 0x5047: %x`, h.MagicNumber)
 	}
 	switch h.SegmentType {
-	case pcsType, wdsType, pdsType, odsType, endType:
+	case PCSType, WDSType, ODSType:
+	case PDSType:
+		if h.SegmentSize%5 != 2 {
+			return fmt.Errorf("invalid segment size: %d bytes", h.SegmentSize)
+		}
+	case ENDType:
+		if h.SegmentSize != 0 {
+			return fmt.Errorf("nonzero segment size: %d bytes", h.SegmentSize)
+		}
 	default:
 		return fmt.Errorf("unrecognized segment type: 0x%x", h.SegmentType)
 	}

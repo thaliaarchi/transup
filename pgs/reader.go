@@ -31,31 +31,31 @@ func (sr *SegmentReader) ReadSegment() (*Segment, error) {
 	}
 
 	switch h.SegmentType {
-	case pcsType:
+	case PCSType:
 		pc, err := sr.readPresentationComposition(h.SegmentSize)
 		if err != nil {
 			return nil, fmt.Errorf("presentation composition segment: %w", err)
 		}
 		s.Data = pc
-	case wdsType:
+	case WDSType:
 		w, err := sr.readWindows(h.SegmentSize)
 		if err != nil {
 			return nil, fmt.Errorf("window definition segment: %w", err)
 		}
 		s.Data = w
-	case pdsType:
+	case PDSType:
 		p, err := sr.readPalette(h.SegmentSize)
 		if err != nil {
 			return nil, fmt.Errorf("palette definition segment: %w", err)
 		}
 		s.Data = p
-	case odsType:
+	case ODSType:
 		o, err := sr.readObject(h.SegmentSize)
 		if err != nil {
 			return nil, fmt.Errorf("object definition segment: %w", err)
 		}
 		s.Data = o
-	case endType:
+	case ENDType:
 	default:
 		panic(fmt.Sprintf("illegal: %d", h.SegmentType))
 	}
@@ -131,9 +131,6 @@ func (sr *SegmentReader) readWindows(segmentSize uint16) ([]Window, error) {
 }
 
 func (sr *SegmentReader) readPalette(segmentSize uint16) (*Palette, error) {
-	if segmentSize%5 != 2 {
-		return nil, fmt.Errorf("invalid segment size of %d bytes in header", segmentSize)
-	}
 	var pds pds
 	if err := binary.Read(sr.r, binary.BigEndian, &pds); err != nil {
 		return nil, err

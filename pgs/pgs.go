@@ -63,6 +63,16 @@ type Image struct {
 	Data          []byte
 }
 
+type SegmentType uint8
+
+const (
+	PCSType SegmentType = 0x16 // Presentation Composition Segment
+	WDSType SegmentType = 0x17 // Window Definition Segment
+	PDSType SegmentType = 0x14 // Palette Definition Segment
+	ODSType SegmentType = 0x15 // Object Definition Segment
+	ENDType SegmentType = 0x80 // End of Display Set Segment
+)
+
 type CompositionState uint8
 
 // The composition state can be one of three values

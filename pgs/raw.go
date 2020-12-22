@@ -6,7 +6,7 @@ type header struct {
 	MagicNumber      uint16    // "PG" 0x5047
 	PresentationTime timestamp // When sub picture is shown on screen
 	DecodingTime     timestamp // When sub picture decoding starts
-	SegmentType      segmentType
+	SegmentType      SegmentType
 	SegmentSize      uint16
 }
 
@@ -48,19 +48,12 @@ type (
 	timestamp uint32
 	uint24    [3]uint8
 
-	segmentType       uint8
 	paletteUpdateFlag uint8
 	objectCroppedFlag uint8
 	sequenceFlag      uint8
 )
 
 const (
-	pcsType segmentType = 0x16 // Presentation Composition Segment
-	wdsType segmentType = 0x17 // Window Definition Segment
-	pdsType segmentType = 0x14 // Palette Definition Segment
-	odsType segmentType = 0x15 // Object Definition Segment
-	endType segmentType = 0x80 // End of Display Set Segment
-
 	pufFalse paletteUpdateFlag = 0x00
 	pufTrue  paletteUpdateFlag = 0x80
 
