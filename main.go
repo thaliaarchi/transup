@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image/png"
 	"io"
 	"log"
 	"os"
@@ -15,41 +14,29 @@ func main() {
 	try(err)
 	defer f.Close()
 
-	sr := pgs.NewSegmentReader(f)
-	var p *pgs.Palette
+	pr := pgs.NewPresentationReader(f)
 	for {
-		s, err := sr.ReadSegment()
+		pc, err := pr.Read()
 		if err == io.EOF {
 			break
 		}
 		try(err)
-		var typ string
-		switch d := s.Data.(type) {
-		case *pgs.PresentationComposition:
-			typ = "PCS"
-		case []pgs.Window:
-			typ = "WDS"
-		case *pgs.Palette:
-			typ = "PDS"
-			p = d
-		case *pgs.Object:
-			img, err := d.Image.Convert(p)
-			try(err)
-			f, err := os.Create(fmt.Sprintf("obj_%s.png", s.PresentationTime))
-			try(err)
-			try(png.Encode(f, img))
-			typ = "ODS"
-		case nil:
-			typ = "END"
+		fmt.Printf("Composition: %+v\n", pc.PresentationComposition)
+		if pc.Windows != nil {
+			fmt.Printf("Windows: %+v\n", pc.Windows)
 		}
-		fmt.Printf("%s %v ", typ, s.PresentationTime)
-		if s.DecodingTime != s.PresentationTime {
-			fmt.Printf("Decoding:%v ", s.DecodingTime)
+		if pc.Palette != nil {
+			fmt.Printf("Palette: %+v\n", pc.Palette)
 		}
-		fmt.Printf("%+v\n", s.Data)
-		if s.Data == nil {
-			fmt.Println()
+		if pc.Object != nil {
+			fmt.Printf("Object: %+v\n", pc.Object)
+			// img, err := pc.Object.Image.Convert(pc.Palette)
+			// try(err)
+			// f, err := os.Create(fmt.Sprintf("obj_%s.png", pc.PresentationTime))
+			// try(err)
+			// try(png.Encode(f, img))
 		}
+		fmt.Println()
 	}
 }
 

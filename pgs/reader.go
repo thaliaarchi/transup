@@ -2,21 +2,88 @@ package pgs
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
 
-type SegmentReader struct {
+type PresentationReader struct {
 	r io.Reader
 }
 
-func NewSegmentReader(r io.Reader) *SegmentReader {
-	return &SegmentReader{r}
+func NewPresentationReader(r io.Reader) *PresentationReader {
+	return &PresentationReader{r}
 }
 
-func (sr *SegmentReader) ReadSegment() (*Segment, error) {
+func (pr *PresentationReader) Read() (*Presentation, error) {
+	var pc Presentation
+
+	h, err := pr.readHeader()
+	if err != nil {
+		return nil, err
+	}
+	if h.SegmentType != PCSType {
+		return nil, fmt.Errorf("segment not PCS: %s", h.SegmentType)
+	}
+	c, err := pr.readPresentationComposition(h.SegmentSize)
+	if err != nil {
+		return nil, fmt.Errorf("presentation composition segment: %w", err)
+	}
+	pc.PresentationTime = h.PresentationTime
+	pc.DecodingTime = h.DecodingTime
+	pc.PresentationComposition = *c
+
+	for {
+		h, err := pr.readHeader()
+		if err != nil {
+			return nil, err
+		}
+		if h.PresentationTime != pc.PresentationTime {
+			return nil, fmt.Errorf("presentation time not consistent: PCS is %s, %s is %s", pc.PresentationTime, h.SegmentType, h.PresentationTime)
+		}
+		if h.DecodingTime != pc.DecodingTime {
+			return nil, fmt.Errorf("decoding time not consistent: PCS is %s, %s is %s", pc.DecodingTime, h.SegmentType, h.DecodingTime)
+		}
+
+		switch h.SegmentType {
+		case PCSType:
+			return nil, errors.New("presentation composition not closed")
+		case WDSType:
+			if pc.Windows != nil {
+				return nil, errors.New("multiple window definitions in presentation composition")
+			}
+			w, err := pr.readWindows(h.SegmentSize)
+			if err != nil {
+				return nil, fmt.Errorf("window definition segment: %w", err)
+			}
+			pc.Windows = w
+		case PDSType:
+			if pc.Palette != nil {
+				return nil, errors.New("multiple palette definitions in presentation composition")
+			}
+			p, err := pr.readPalette(h.SegmentSize)
+			if err != nil {
+				return nil, fmt.Errorf("palette definition segment: %w", err)
+			}
+			pc.Palette = p
+		case ODSType:
+			if pc.Object != nil {
+				return nil, errors.New("multiple object definitions in presentation composition")
+			}
+			o, err := pr.readObject(h.SegmentSize)
+			if err != nil {
+				return nil, fmt.Errorf("object definition segment: %w", err)
+			}
+			pc.Object = o
+		case ENDType:
+			return &pc, nil
+		}
+	}
+}
+
+func (pr *PresentationReader) readHeader() (*Header, error) {
 	var h header
-	if err := binary.Read(sr.r, binary.BigEndian, &h); err != nil {
+	if err := binary.Read(pr.r, binary.BigEndian, &h); err != nil {
 		if err == io.EOF {
 			return nil, err
 		}
@@ -25,46 +92,17 @@ func (sr *SegmentReader) ReadSegment() (*Segment, error) {
 	if err := h.validate(); err != nil {
 		return nil, err
 	}
-	s := &Segment{
+	return &Header{
 		PresentationTime: h.PresentationTime.Duration(),
 		DecodingTime:     h.DecodingTime.Duration(),
-	}
-
-	switch h.SegmentType {
-	case PCSType:
-		pc, err := sr.readPresentationComposition(h.SegmentSize)
-		if err != nil {
-			return nil, fmt.Errorf("presentation composition segment: %w", err)
-		}
-		s.Data = pc
-	case WDSType:
-		w, err := sr.readWindows(h.SegmentSize)
-		if err != nil {
-			return nil, fmt.Errorf("window definition segment: %w", err)
-		}
-		s.Data = w
-	case PDSType:
-		p, err := sr.readPalette(h.SegmentSize)
-		if err != nil {
-			return nil, fmt.Errorf("palette definition segment: %w", err)
-		}
-		s.Data = p
-	case ODSType:
-		o, err := sr.readObject(h.SegmentSize)
-		if err != nil {
-			return nil, fmt.Errorf("object definition segment: %w", err)
-		}
-		s.Data = o
-	case ENDType:
-	default:
-		panic(fmt.Sprintf("illegal: %d", h.SegmentType))
-	}
-	return s, nil
+		SegmentType:      h.SegmentType,
+		SegmentSize:      h.SegmentSize,
+	}, nil
 }
 
-func (sr *SegmentReader) readPresentationComposition(segmentSize uint16) (*PresentationComposition, error) {
+func (pr *PresentationReader) readPresentationComposition(segmentSize uint16) (*PresentationComposition, error) {
 	var pcs pcs
-	if err := binary.Read(sr.r, binary.BigEndian, &pcs); err != nil {
+	if err := binary.Read(pr.r, binary.BigEndian, &pcs); err != nil {
 		return nil, err
 	}
 	if err := pcs.validate(); err != nil {
@@ -74,7 +112,7 @@ func (sr *SegmentReader) readPresentationComposition(segmentSize uint16) (*Prese
 	objects := make([]CompositionObject, pcs.ObjectCount)
 	for i := range objects {
 		var obj pcsObject
-		err := binary.Read(sr.r, binary.BigEndian, &obj)
+		err := binary.Read(pr.r, binary.BigEndian, &obj)
 		if err == nil {
 			err = obj.validate()
 		}
@@ -89,7 +127,7 @@ func (sr *SegmentReader) readPresentationComposition(segmentSize uint16) (*Prese
 		}
 		if obj.ObjectCropped == croppedForce {
 			var crop CompositionObjectCrop
-			if err := binary.Read(sr.r, binary.BigEndian, &crop); err != nil {
+			if err := binary.Read(pr.r, binary.BigEndian, &crop); err != nil {
 				return nil, err
 			}
 			objects[i].Crop = &crop
@@ -113,9 +151,9 @@ func (sr *SegmentReader) readPresentationComposition(segmentSize uint16) (*Prese
 	return pc, nil
 }
 
-func (sr *SegmentReader) readWindows(segmentSize uint16) ([]Window, error) {
+func (pr *PresentationReader) readWindows(segmentSize uint16) ([]Window, error) {
 	var wds wds
-	if err := binary.Read(sr.r, binary.BigEndian, &wds); err != nil {
+	if err := binary.Read(pr.r, binary.BigEndian, &wds); err != nil {
 		return nil, err
 	}
 	if err := wds.validate(segmentSize); err != nil {
@@ -123,23 +161,23 @@ func (sr *SegmentReader) readWindows(segmentSize uint16) ([]Window, error) {
 	}
 	windows := make([]Window, wds.WindowCount)
 	for i := range windows {
-		if err := binary.Read(sr.r, binary.BigEndian, &windows[i]); err != nil {
+		if err := binary.Read(pr.r, binary.BigEndian, &windows[i]); err != nil {
 			return nil, err
 		}
 	}
 	return windows, nil
 }
 
-func (sr *SegmentReader) readPalette(segmentSize uint16) (*Palette, error) {
+func (pr *PresentationReader) readPalette(segmentSize uint16) (*Palette, error) {
 	var pds pds
-	if err := binary.Read(sr.r, binary.BigEndian, &pds); err != nil {
+	if err := binary.Read(pr.r, binary.BigEndian, &pds); err != nil {
 		return nil, err
 	}
 	n := (segmentSize - 2) / 5
 	entries := make([]PaletteEntry, n)
 	ids := make(map[uint8]struct{}, n)
 	for i := range entries {
-		if err := binary.Read(sr.r, binary.BigEndian, &entries[i]); err != nil {
+		if err := binary.Read(pr.r, binary.BigEndian, &entries[i]); err != nil {
 			return nil, fmt.Errorf("palette entry %d/%d: %w", i, n, err)
 		}
 		id := entries[i].ID
@@ -153,12 +191,15 @@ func (sr *SegmentReader) readPalette(segmentSize uint16) (*Palette, error) {
 		Version: pds.PaletteVersion,
 		Entries: entries,
 	}
+	if err := p.validate(segmentSize); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
-func (sr *SegmentReader) readObject(segmentSize uint16) (*Object, error) {
+func (pr *PresentationReader) readObject(segmentSize uint16) (*Object, error) {
 	var ods ods
-	if err := binary.Read(sr.r, binary.BigEndian, &ods); err != nil {
+	if err := binary.Read(pr.r, binary.BigEndian, &ods); err != nil {
 		return nil, err
 	}
 	if ods.SequenceFlag&^(firstInSequence|lastInSequence) != 0 {
@@ -171,7 +212,7 @@ func (sr *SegmentReader) readObject(segmentSize uint16) (*Object, error) {
 	data := make([]byte, dataLen)
 	n := 0
 	for n < dataLen {
-		n0, err := sr.r.Read(data[n:])
+		n0, err := pr.r.Read(data[n:])
 		if err != nil {
 			return nil, err
 		}

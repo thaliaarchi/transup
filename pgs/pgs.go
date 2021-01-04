@@ -1,14 +1,25 @@
 package pgs
 
 import (
+	"fmt"
 	"image/color"
 	"time"
 )
 
-type Segment struct {
+type Presentation struct {
 	PresentationTime time.Duration
 	DecodingTime     time.Duration
-	Data             interface{}
+	PresentationComposition
+	Windows []Window
+	Palette *Palette
+	Object  *Object
+}
+
+type Header struct {
+	PresentationTime time.Duration
+	DecodingTime     time.Duration
+	SegmentType      SegmentType
+	SegmentSize      uint16
 }
 
 type PresentationComposition struct {
@@ -95,3 +106,31 @@ const (
 	// defined since the Epoch Start.
 	Normal CompositionState = 0x00
 )
+
+func (typ SegmentType) String() string {
+	switch typ {
+	case PCSType:
+		return "PCS"
+	case WDSType:
+		return "WDS"
+	case PDSType:
+		return "PDS"
+	case ODSType:
+		return "ODS"
+	case ENDType:
+		return "END"
+	}
+	return fmt.Sprintf("%x", string(typ))
+}
+
+func (p *Palette) String() string {
+	return fmt.Sprintf("{ID:%d Version:%d len:%d}", p.ID, p.Version, len(p.Entries))
+}
+
+func (pe PaletteEntry) String() string {
+	return fmt.Sprintf("{%d: %d %d %d %d}", pe.ID, pe.Y, pe.Cb, pe.Cr, pe.A)
+}
+
+func (img Image) String() string {
+	return fmt.Sprintf("{%dx%d len:%d}", img.Width, img.Height, len(img.Data))
+}

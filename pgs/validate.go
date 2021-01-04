@@ -53,6 +53,13 @@ func (wds *wds) validate(segmentSize uint16) error {
 	return nil
 }
 
-// func (pds *pds) validate(segmentSize uint16) error {
-
-// }
+func (p *Palette) validate(segmentSize uint16) error {
+	ids := make(map[uint8]struct{}, len(p.Entries))
+	for _, e := range p.Entries {
+		if _, ok := ids[e.ID]; ok {
+			return fmt.Errorf("id reused: %d", e.ID)
+		}
+		ids[e.ID] = struct{}{}
+	}
+	return nil
+}
