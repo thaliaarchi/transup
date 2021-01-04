@@ -1,6 +1,9 @@
 package pgs
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type header struct {
 	MagicNumber      uint16    // "PG" 0x5047
@@ -70,6 +73,17 @@ func (ts timestamp) Duration() time.Duration {
 	return time.Duration(ts) * time.Millisecond / 90
 }
 
-func (ui uint24) Uint32() uint32 {
-	return uint32(ui[0])<<16 | uint32(ui[1])<<8 | uint32(ui[2])
+func fromDuration(d time.Duration) timestamp {
+	return timestamp(d * 90 / time.Millisecond)
+}
+
+func (ui uint24) Int() int {
+	return int(ui[0])<<16 | int(ui[1])<<8 | int(ui[2])
+}
+
+func uint24FromInt(n int) (uint24, error) {
+	if n < 0 || n > 0xffffff {
+		return uint24{}, fmt.Errorf("out of range: %d", n)
+	}
+	return uint24{uint8(n >> 16), uint8(n >> 8), uint8(n)}, nil
 }

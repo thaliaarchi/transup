@@ -63,3 +63,10 @@ func (p *Palette) validate(segmentSize uint16) error {
 	}
 	return nil
 }
+
+func (ods *ods) validate(segmentSize uint16) error {
+	if ods.SequenceFlag&^(firstInSequence|lastInSequence) != 0 {
+		return fmt.Errorf("unrecognized flag: 0x%x", ods.SequenceFlag)
+	}
+	return nil
+}

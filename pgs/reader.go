@@ -7,70 +7,75 @@ import (
 	"io"
 )
 
-type PresentationReader struct {
+type Reader struct {
 	r io.Reader
 }
 
-func NewPresentationReader(r io.Reader) *PresentationReader {
-	return &PresentationReader{r}
+func NewReader(r io.Reader) *Reader {
+	return &Reader{r}
 }
 
-func (pr *PresentationReader) Read() (*Presentation, error) {
+func (r *Reader) Read() (*Presentation, error) {
 	var pc Presentation
 
-	h, err := pr.readHeader()
-	if err != nil {
+	h0, err := r.readHeader()
+	if err == io.EOF {
 		return nil, err
 	}
-	if h.SegmentType != PCSType {
-		return nil, fmt.Errorf("segment not PCS: %s", h.SegmentType)
+	if err != nil {
+		return nil, fmt.Errorf("segment header: %w", err)
 	}
-	c, err := pr.readPresentationComposition(h.SegmentSize)
+	if h0.SegmentType != PCSType {
+		return nil, fmt.Errorf("segment not PCS: %s", h0.SegmentType)
+	}
+	c, err := r.readPresentationComposition(h0.SegmentSize)
 	if err != nil {
 		return nil, fmt.Errorf("presentation composition segment: %w", err)
 	}
-	pc.PresentationTime = h.PresentationTime
-	pc.DecodingTime = h.DecodingTime
+	pc.PresentationTime = h0.PresentationTime.Duration()
+	pc.DecodingTime = h0.DecodingTime.Duration()
 	pc.PresentationComposition = *c
 
 	for {
-		h, err := pr.readHeader()
+		h, err := r.readHeader()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("segment header: %w", err)
 		}
-		if h.PresentationTime != pc.PresentationTime {
-			return nil, fmt.Errorf("presentation time not consistent: PCS is %s, %s is %s", pc.PresentationTime, h.SegmentType, h.PresentationTime)
+		if h.PresentationTime != h0.PresentationTime {
+			return nil, fmt.Errorf("presentation time not consistent: PCS is %s, %s is %s",
+				pc.PresentationTime, h.SegmentType, h.PresentationTime.Duration())
 		}
-		if h.DecodingTime != pc.DecodingTime {
-			return nil, fmt.Errorf("decoding time not consistent: PCS is %s, %s is %s", pc.DecodingTime, h.SegmentType, h.DecodingTime)
+		if h.DecodingTime != h0.DecodingTime {
+			return nil, fmt.Errorf("decoding time not consistent: PCS is %s, %s is %s",
+				pc.DecodingTime, h.SegmentType, h.DecodingTime.Duration())
 		}
 
 		switch h.SegmentType {
 		case PCSType:
-			return nil, errors.New("presentation composition not closed")
+			return nil, errors.New("presentation composition not ended")
 		case WDSType:
-			if pc.Windows != nil {
-				return nil, errors.New("multiple window definitions in presentation composition")
+			if len(pc.Windows) != 0 {
+				return nil, errors.New("multiple window definitions")
 			}
-			w, err := pr.readWindows(h.SegmentSize)
+			w, err := r.readWindows(h.SegmentSize)
 			if err != nil {
 				return nil, fmt.Errorf("window definition segment: %w", err)
 			}
 			pc.Windows = w
 		case PDSType:
 			if pc.Palette != nil {
-				return nil, errors.New("multiple palette definitions in presentation composition")
+				return nil, errors.New("multiple palette definitions")
 			}
-			p, err := pr.readPalette(h.SegmentSize)
+			p, err := r.readPalette(h.SegmentSize)
 			if err != nil {
 				return nil, fmt.Errorf("palette definition segment: %w", err)
 			}
 			pc.Palette = p
 		case ODSType:
 			if pc.Object != nil {
-				return nil, errors.New("multiple object definitions in presentation composition")
+				return nil, errors.New("multiple object definitions")
 			}
-			o, err := pr.readObject(h.SegmentSize)
+			o, err := r.readObject(h.SegmentSize)
 			if err != nil {
 				return nil, fmt.Errorf("object definition segment: %w", err)
 			}
@@ -81,28 +86,20 @@ func (pr *PresentationReader) Read() (*Presentation, error) {
 	}
 }
 
-func (pr *PresentationReader) readHeader() (*Header, error) {
+func (r *Reader) readHeader() (*header, error) {
 	var h header
-	if err := binary.Read(pr.r, binary.BigEndian, &h); err != nil {
-		if err == io.EOF {
-			return nil, err
-		}
-		return nil, fmt.Errorf("segment header: %w", err)
+	if err := binary.Read(r.r, binary.BigEndian, &h); err != nil {
+		return nil, err
 	}
 	if err := h.validate(); err != nil {
 		return nil, err
 	}
-	return &Header{
-		PresentationTime: h.PresentationTime.Duration(),
-		DecodingTime:     h.DecodingTime.Duration(),
-		SegmentType:      h.SegmentType,
-		SegmentSize:      h.SegmentSize,
-	}, nil
+	return &h, nil
 }
 
-func (pr *PresentationReader) readPresentationComposition(segmentSize uint16) (*PresentationComposition, error) {
+func (r *Reader) readPresentationComposition(segmentSize uint16) (*PresentationComposition, error) {
 	var pcs pcs
-	if err := binary.Read(pr.r, binary.BigEndian, &pcs); err != nil {
+	if err := binary.Read(r.r, binary.BigEndian, &pcs); err != nil {
 		return nil, err
 	}
 	if err := pcs.validate(); err != nil {
@@ -112,11 +109,10 @@ func (pr *PresentationReader) readPresentationComposition(segmentSize uint16) (*
 	objects := make([]CompositionObject, pcs.ObjectCount)
 	for i := range objects {
 		var obj pcsObject
-		err := binary.Read(pr.r, binary.BigEndian, &obj)
-		if err == nil {
-			err = obj.validate()
+		if err := binary.Read(r.r, binary.BigEndian, &obj); err != nil {
+			return nil, err
 		}
-		if err != nil {
+		if err := obj.validate(); err != nil {
 			return nil, fmt.Errorf("composition object %d/%d: %w", i+1, pcs.ObjectCount, err)
 		}
 		objects[i] = CompositionObject{
@@ -127,7 +123,7 @@ func (pr *PresentationReader) readPresentationComposition(segmentSize uint16) (*
 		}
 		if obj.ObjectCropped == croppedForce {
 			var crop CompositionObjectCrop
-			if err := binary.Read(pr.r, binary.BigEndian, &crop); err != nil {
+			if err := binary.Read(r.r, binary.BigEndian, &crop); err != nil {
 				return nil, err
 			}
 			objects[i].Crop = &crop
@@ -151,9 +147,9 @@ func (pr *PresentationReader) readPresentationComposition(segmentSize uint16) (*
 	return pc, nil
 }
 
-func (pr *PresentationReader) readWindows(segmentSize uint16) ([]Window, error) {
+func (r *Reader) readWindows(segmentSize uint16) ([]Window, error) {
 	var wds wds
-	if err := binary.Read(pr.r, binary.BigEndian, &wds); err != nil {
+	if err := binary.Read(r.r, binary.BigEndian, &wds); err != nil {
 		return nil, err
 	}
 	if err := wds.validate(segmentSize); err != nil {
@@ -161,30 +157,24 @@ func (pr *PresentationReader) readWindows(segmentSize uint16) ([]Window, error) 
 	}
 	windows := make([]Window, wds.WindowCount)
 	for i := range windows {
-		if err := binary.Read(pr.r, binary.BigEndian, &windows[i]); err != nil {
+		if err := binary.Read(r.r, binary.BigEndian, &windows[i]); err != nil {
 			return nil, err
 		}
 	}
 	return windows, nil
 }
 
-func (pr *PresentationReader) readPalette(segmentSize uint16) (*Palette, error) {
+func (r *Reader) readPalette(segmentSize uint16) (*Palette, error) {
 	var pds pds
-	if err := binary.Read(pr.r, binary.BigEndian, &pds); err != nil {
+	if err := binary.Read(r.r, binary.BigEndian, &pds); err != nil {
 		return nil, err
 	}
 	n := (segmentSize - 2) / 5
 	entries := make([]PaletteEntry, n)
-	ids := make(map[uint8]struct{}, n)
 	for i := range entries {
-		if err := binary.Read(pr.r, binary.BigEndian, &entries[i]); err != nil {
-			return nil, fmt.Errorf("palette entry %d/%d: %w", i, n, err)
+		if err := binary.Read(r.r, binary.BigEndian, &entries[i]); err != nil {
+			return nil, err
 		}
-		id := entries[i].ID
-		if _, ok := ids[id]; ok {
-			return nil, fmt.Errorf("palette entry %d/%d: ID %d reused", i, n, id)
-		}
-		ids[id] = struct{}{}
 	}
 	p := &Palette{
 		ID:      pds.PaletteID,
@@ -197,22 +187,22 @@ func (pr *PresentationReader) readPalette(segmentSize uint16) (*Palette, error) 
 	return p, nil
 }
 
-func (pr *PresentationReader) readObject(segmentSize uint16) (*Object, error) {
+func (r *Reader) readObject(segmentSize uint16) (*Object, error) {
 	var ods ods
-	if err := binary.Read(pr.r, binary.BigEndian, &ods); err != nil {
+	if err := binary.Read(r.r, binary.BigEndian, &ods); err != nil {
 		return nil, err
 	}
-	if ods.SequenceFlag&^(firstInSequence|lastInSequence) != 0 {
-		return nil, fmt.Errorf("unrecognized flag: 0x%x", ods.SequenceFlag)
+	if err := ods.validate(segmentSize); err != nil {
+		return nil, err
 	}
-	dataLen := int(ods.ObjectDataLength.Uint32()) - 4
+	dataLen := ods.ObjectDataLength.Int() - 4
 	if dataLen < 0 {
 		return nil, fmt.Errorf("data length excludes width and height")
 	}
 	data := make([]byte, dataLen)
 	n := 0
 	for n < dataLen {
-		n0, err := pr.r.Read(data[n:])
+		n0, err := r.r.Read(data[n:])
 		if err != nil {
 			return nil, err
 		}

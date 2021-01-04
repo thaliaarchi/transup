@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/andrewarchi/transup/pgs"
@@ -14,13 +13,14 @@ func main() {
 	try(err)
 	defer f.Close()
 
-	pr := pgs.NewPresentationReader(f)
+	r := pgs.NewReader(f)
 	for {
-		pc, err := pr.Read()
+		pc, err := r.Read()
 		if err == io.EOF {
 			break
 		}
 		try(err)
+		fmt.Printf("Presentation: %s Decoding:%s\n", pc.PresentationTime, pc.DecodingTime)
 		fmt.Printf("Composition: %+v\n", pc.PresentationComposition)
 		if pc.Windows != nil {
 			fmt.Printf("Windows: %+v\n", pc.Windows)
@@ -42,6 +42,7 @@ func main() {
 
 func try(err error) {
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stdout, err)
+		os.Exit(1)
 	}
 }

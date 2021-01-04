@@ -15,13 +15,6 @@ type Presentation struct {
 	Object  *Object
 }
 
-type Header struct {
-	PresentationTime time.Duration
-	DecodingTime     time.Duration
-	SegmentType      SegmentType
-	SegmentSize      uint16
-}
-
 type PresentationComposition struct {
 	Width, Height     uint16 // Video dimensions in pixels
 	FrameRate         uint8  // Always 0x10; can be ignored
@@ -46,7 +39,7 @@ type CompositionObjectCrop struct {
 }
 
 type Window struct {
-	WindowID      uint8
+	ID            uint8
 	X, Y          uint16
 	Width, Height uint16
 }
