@@ -15,22 +15,18 @@ func TestTwoWay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	neq := 0
 	for _, filename := range files {
-		eq, err := testFileTwoWay(os.Stderr, filename)
+		eq, err := testFileTwoWay(filename, os.Stderr)
 		if err != nil {
 			t.Error(err)
 		} else if !eq {
 			t.Errorf("%s differs", filename)
-			neq++
-			if neq >= 5 {
-				break
-			}
+			break
 		}
 	}
 }
 
-func testFileTwoWay(log io.Writer, filename string) (bool, error) {
+func testFileTwoWay(filename string, log io.Writer) (bool, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return false, err
@@ -60,17 +56,11 @@ func testFileTwoWay(log io.Writer, filename string) (bool, error) {
 			if log != nil {
 				src, dst := c.Sections()
 				fmt.Fprintf(log, "%s section %d not equal\n", filename, i)
-				fmt.Fprintln(log, "src")
 				d := hex.Dumper(log)
-				if _, err := io.Copy(d, src); err != nil {
-					return false, err
-				}
+				io.Copy(d, src)
 				d.Close()
-				fmt.Fprintln(log, "dst")
 				d = hex.Dumper(log)
-				if _, err := io.Copy(d, dst); err != nil {
-					return false, err
-				}
+				io.Copy(d, dst)
 				d.Close()
 			}
 			return false, nil

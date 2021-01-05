@@ -65,6 +65,14 @@ func (p *Palette) validate(segmentSize uint16) error {
 }
 
 func (ods *ods) validate(segmentSize uint16) error {
+	// Object data length may overflow segment size
+	l := ods.ObjectDataLength.Int()
+	if l < 0xffff-11 && l != int(segmentSize)-7 {
+		return fmt.Errorf("segment size %d not consistent with object data length %d", segmentSize, l)
+	}
+	if l < 4 {
+		return fmt.Errorf("data length excludes width and height")
+	}
 	if ods.SequenceFlag&^(firstInSequence|lastInSequence) != 0 {
 		return fmt.Errorf("unrecognized flag: 0x%x", ods.SequenceFlag)
 	}

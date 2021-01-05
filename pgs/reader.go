@@ -196,9 +196,6 @@ func (r *Reader) readObject(segmentSize uint16) (*Object, error) {
 		return nil, err
 	}
 	dataLen := ods.ObjectDataLength.Int() - 4
-	if dataLen < 0 {
-		return nil, fmt.Errorf("data length excludes width and height")
-	}
 	data := make([]byte, dataLen)
 	n := 0
 	for n < dataLen {

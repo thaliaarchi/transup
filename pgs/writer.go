@@ -84,7 +84,34 @@ func (w *Writer) writePresentationComposition(h header, pc *PresentationComposit
 	if err := w.writeHeader(&h); err != nil {
 		return err
 	}
-	return binary.Write(w.w, binary.BigEndian, pcs)
+	if err := binary.Write(w.w, binary.BigEndian, pcs); err != nil {
+		return err
+	}
+	for i, obj := range pc.Objects {
+		var cropped objectCroppedFlag
+		if obj.Crop != nil {
+			cropped |= croppedForce
+		}
+		o := pcsObject{
+			ObjectID:      obj.ObjectID,
+			WindowID:      obj.WindowID,
+			ObjectCropped: cropped,
+			X:             obj.X,
+			Y:             obj.Y,
+		}
+		if err := o.validate(); err != nil {
+			return fmt.Errorf("composition object %d/%d: %w", i+1, len(pc.Objects), err)
+		}
+		if err := binary.Write(w.w, binary.BigEndian, &o); err != nil {
+			return err
+		}
+		if obj.Crop != nil {
+			if err := binary.Write(w.w, binary.BigEndian, &obj.Crop); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (w *Writer) writeWindows(h header, ws []Window) error {
@@ -130,11 +157,11 @@ func (w *Writer) writePalette(h header, p *Palette) error {
 }
 
 func (w *Writer) writeObject(h header, obj *Object) error {
-	if len(obj.Data) > 0xffff-4 {
+	if len(obj.Data) > 0xffffff-4 {
 		return fmt.Errorf("object data length overflow: %d", len(obj.Data))
 	}
 	h.SegmentType = ODSType
-	h.SegmentSize = uint16(len(obj.Data) + 4)
+	h.SegmentSize = uint16(len(obj.Data) + 11)
 
 	var seq sequenceFlag
 	if obj.First {
@@ -143,7 +170,7 @@ func (w *Writer) writeObject(h header, obj *Object) error {
 	if obj.Last {
 		seq |= lastInSequence
 	}
-	l, err := uint24FromInt(len(obj.Data))
+	l, err := uint24FromInt(len(obj.Data) + 4)
 	if err != nil {
 		return err
 	}
