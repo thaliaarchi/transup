@@ -14,27 +14,27 @@ func NewWriter(w io.Writer) *Writer {
 	return &Writer{w}
 }
 
-func (w *Writer) Write(p *Presentation) error {
+func (w *Writer) Write(ds *DisplaySet) error {
 	h := header{
 		MagicNumber:      0x5047,
-		PresentationTime: fromDuration(p.PresentationTime),
-		DecodingTime:     fromDuration(p.DecodingTime),
+		PresentationTime: fromDuration(ds.PresentationTime),
+		DecodingTime:     fromDuration(ds.DecodingTime),
 	}
-	if err := w.writePresentationComposition(h, &p.PresentationComposition); err != nil {
+	if err := w.writePresentationComposition(h, &ds.PresentationComposition); err != nil {
 		return fmt.Errorf("presentation composition segment: %w", err)
 	}
-	if len(p.Windows) != 0 {
-		if err := w.writeWindows(h, p.Windows); err != nil {
+	if len(ds.Windows) != 0 {
+		if err := w.writeWindows(h, ds.Windows); err != nil {
 			return fmt.Errorf("window definition segment: %w", err)
 		}
 	}
-	if p.Palette != nil {
-		if err := w.writePalette(h, p.Palette); err != nil {
+	if ds.Palette != nil {
+		if err := w.writePalette(h, ds.Palette); err != nil {
 			return fmt.Errorf("palette definition segment: %w", err)
 		}
 	}
-	if p.Object != nil {
-		if err := w.writeObject(h, p.Object); err != nil {
+	if ds.Object != nil {
+		if err := w.writeObject(h, ds.Object); err != nil {
 			return fmt.Errorf("palette definition segment: %w", err)
 		}
 	}

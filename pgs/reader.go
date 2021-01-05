@@ -15,8 +15,22 @@ func NewReader(r io.Reader) *Reader {
 	return &Reader{r}
 }
 
-func (r *Reader) Read() (*Presentation, error) {
-	var pc Presentation
+func (r *Reader) ReadAll() ([]DisplaySet, error) {
+	var stream []DisplaySet
+	for {
+		ds, err := r.Read()
+		if err == io.EOF {
+			return stream, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		stream = append(stream, *ds)
+	}
+}
+
+func (r *Reader) Read() (*DisplaySet, error) {
+	var ds DisplaySet
 
 	h0, err := r.readHeader()
 	if err == io.EOF {
@@ -32,9 +46,9 @@ func (r *Reader) Read() (*Presentation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("presentation composition segment: %w", err)
 	}
-	pc.PresentationTime = h0.PresentationTime.Duration()
-	pc.DecodingTime = h0.DecodingTime.Duration()
-	pc.PresentationComposition = *c
+	ds.PresentationTime = h0.PresentationTime.Duration()
+	ds.DecodingTime = h0.DecodingTime.Duration()
+	ds.PresentationComposition = *c
 
 	for {
 		h, err := r.readHeader()
@@ -43,45 +57,45 @@ func (r *Reader) Read() (*Presentation, error) {
 		}
 		if h.PresentationTime != h0.PresentationTime {
 			return nil, fmt.Errorf("presentation time not consistent: PCS is %s, %s is %s",
-				pc.PresentationTime, h.SegmentType, h.PresentationTime.Duration())
+				ds.PresentationTime, h.SegmentType, h.PresentationTime.Duration())
 		}
 		if h.DecodingTime != h0.DecodingTime {
 			return nil, fmt.Errorf("decoding time not consistent: PCS is %s, %s is %s",
-				pc.DecodingTime, h.SegmentType, h.DecodingTime.Duration())
+				ds.DecodingTime, h.SegmentType, h.DecodingTime.Duration())
 		}
 
 		switch h.SegmentType {
 		case PCSType:
 			return nil, errors.New("presentation composition not ended")
 		case WDSType:
-			if len(pc.Windows) != 0 {
+			if len(ds.Windows) != 0 {
 				return nil, errors.New("multiple window definitions")
 			}
 			w, err := r.readWindows(h.SegmentSize)
 			if err != nil {
 				return nil, fmt.Errorf("window definition segment: %w", err)
 			}
-			pc.Windows = w
+			ds.Windows = w
 		case PDSType:
-			if pc.Palette != nil {
+			if ds.Palette != nil {
 				return nil, errors.New("multiple palette definitions")
 			}
 			p, err := r.readPalette(h.SegmentSize)
 			if err != nil {
 				return nil, fmt.Errorf("palette definition segment: %w", err)
 			}
-			pc.Palette = p
+			ds.Palette = p
 		case ODSType:
-			if pc.Object != nil {
+			if ds.Object != nil {
 				return nil, errors.New("multiple object definitions")
 			}
 			o, err := r.readObject(h.SegmentSize)
 			if err != nil {
 				return nil, fmt.Errorf("object definition segment: %w", err)
 			}
-			pc.Object = o
+			ds.Object = o
 		case ENDType:
-			return &pc, nil
+			return &ds, nil
 		}
 	}
 }

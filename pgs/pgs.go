@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type Presentation struct {
+type DisplaySet struct {
 	PresentationTime time.Duration
 	DecodingTime     time.Duration
 	PresentationComposition

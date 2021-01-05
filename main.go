@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/andrewarchi/transup/pgs"
@@ -13,26 +12,22 @@ func main() {
 	try(err)
 	defer f.Close()
 
-	r := pgs.NewReader(f)
-	for {
-		pc, err := r.Read()
-		if err == io.EOF {
-			break
+	stream, err := pgs.NewReader(f).ReadAll()
+	try(err)
+	for _, ds := range stream {
+		fmt.Printf("Presentation: %s Decoding:%s\n", ds.PresentationTime, ds.DecodingTime)
+		fmt.Printf("Composition: %+v\n", ds.PresentationComposition)
+		if ds.Windows != nil {
+			fmt.Printf("Windows: %+v\n", ds.Windows)
 		}
-		try(err)
-		fmt.Printf("Presentation: %s Decoding:%s\n", pc.PresentationTime, pc.DecodingTime)
-		fmt.Printf("Composition: %+v\n", pc.PresentationComposition)
-		if pc.Windows != nil {
-			fmt.Printf("Windows: %+v\n", pc.Windows)
+		if ds.Palette != nil {
+			fmt.Printf("Palette: %+v\n", ds.Palette)
 		}
-		if pc.Palette != nil {
-			fmt.Printf("Palette: %+v\n", pc.Palette)
-		}
-		if pc.Object != nil {
-			fmt.Printf("Object: %+v\n", pc.Object)
-			// img, err := pc.Object.Image.Convert(pc.Palette)
+		if ds.Object != nil {
+			fmt.Printf("Object: %+v\n", ds.Object)
+			// img, err := ds.Object.Image.Convert(ds.Palette)
 			// try(err)
-			// f, err := os.Create(fmt.Sprintf("obj_%s.png", pc.PresentationTime))
+			// f, err := os.Create(fmt.Sprintf("obj_%s.png", ds.PresentationTime))
 			// try(err)
 			// try(png.Encode(f, img))
 		}
