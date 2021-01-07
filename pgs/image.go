@@ -68,7 +68,7 @@ func (img *Image) Convert(p *Palette) (*image.Paletted, error) {
 		x += int(l)
 	}
 	if x != 0 {
-		return nil, fmt.Errorf("line %d has width %d instead of %d", y, x, img.Width)
+		return nil, fmt.Errorf("line %d with width %d not terminated", y, x)
 	}
 	if y != int(img.Height) {
 		return nil, fmt.Errorf("image has height %d instead of %d", y, img.Height)

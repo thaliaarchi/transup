@@ -34,7 +34,7 @@ func main() {
 	case "reverse":
 		out := os.Stdout
 		if len(os.Args) == 5 {
-			out, err = os.Open(os.Args[4])
+			out, err = os.Create(os.Args[4])
 			try(err)
 		}
 		d, err := time.ParseDuration(os.Args[3])
