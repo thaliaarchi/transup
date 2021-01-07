@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"os"
 )
 
 func (img *Image) Convert(p *Palette) (*image.Paletted, error) {
@@ -28,35 +27,38 @@ func (img *Image) Convert(p *Palette) (*image.Paletted, error) {
 			x++
 			continue
 		}
-		i++
 		var c uint8
 		var l uint16
 
-		switch d[i] & 0xc0 {
+		hd1, ld1 := d[i+1]&0xc0, d[i+1]&0x3f
+		switch hd1 {
 		case 0x00:
-			if d[i] == 0 { // 00000000 00000000 - End of line
-				if x+1 != int(img.Width) {
-					fmt.Fprintf(os.Stderr, "line %d has width %d instead of %d\n", y, x+1, img.Width)
-					// return nil, fmt.Errorf("line %d has width %d instead of %d", y, x+1, img.Width)
+			i += 2
+			// 00000000 00000000 - End of line
+			if ld1 == 0 {
+				if x != int(img.Width) {
+					return nil, fmt.Errorf("line %d has width %d instead of %d", y, x, img.Width)
 				}
 				x = 0
 				y++
 				continue
 			}
-			// 00000000 00LLLLLL - L pixels in color 0 (L between 1 and 63)
-			l = uint16(d[i] & 0x3f)
-			i++
-		case 0x40: // 00000000 01LLLLLL LLLLLLLL - L pixels in color 0 (L between 64 and 16383)
-			l = uint16(d[i]&0x3f)<<8 | uint16(d[i+1])
-			i += 2
-		case 0x80: // 00000000 10LLLLLL CCCCCCCC - L pixels in color C (L between 3 and 63)
-			l = uint16(d[i] & 0x3f)
-			c = idMap[d[i+1]]
-			i += 2
-		case 0xc0: // 00000000 11LLLLLL LLLLLLLL CCCCCCCC - L pixels in color C (L between 64 and 16383)
-			l = uint16(d[i]&0x3f)<<8 | uint16(d[i+1])
+			// 00000000 00LLLLLL - L pixels in color 0
+			l = uint16(ld1)
+		// 00000000 01LLLLLL LLLLLLLL - L pixels in color 0
+		case 0x40:
+			l = uint16(ld1)<<8 | uint16(d[i+2])
+			i += 3
+		// 00000000 10LLLLLL CCCCCCCC - L pixels in color C
+		case 0x80:
+			l = uint16(ld1)
 			c = idMap[d[i+2]]
 			i += 3
+		// 00000000 11LLLLLL LLLLLLLL CCCCCCCC - L pixels in color C
+		case 0xc0:
+			l = uint16(ld1)<<8 | uint16(d[i+2])
+			c = idMap[d[i+3]]
+			i += 4
 		default:
 			panic("impossible")
 		}
@@ -65,8 +67,11 @@ func (img *Image) Convert(p *Palette) (*image.Paletted, error) {
 		}
 		x += int(l)
 	}
-	if y+1 != int(img.Height) {
-		return nil, fmt.Errorf("image has height %d instead of %d", y+1, img.Height)
+	if x != 0 {
+		return nil, fmt.Errorf("line %d has width %d instead of %d", y, x, img.Width)
+	}
+	if y != int(img.Height) {
+		return nil, fmt.Errorf("image has height %d instead of %d", y, img.Height)
 	}
 	return pimg, nil
 }

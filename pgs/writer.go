@@ -14,6 +14,15 @@ func NewWriter(w io.Writer) *Writer {
 	return &Writer{w}
 }
 
+func (w *Writer) WriteAll(stream []DisplaySet) error {
+	for _, ds := range stream {
+		if err := w.Write(&ds); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (w *Writer) Write(ds *DisplaySet) error {
 	h := header{
 		MagicNumber:      0x5047,
